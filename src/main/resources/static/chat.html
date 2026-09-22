@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 对话 - 流式输出</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            max-width: 720px;
+            margin: 0 auto;
+            font-family: -apple-system, "Segoe UI", sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: #fff;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .msg {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 15px;
+        }
+        .msg.user {
+            align-self: flex-end;
+            background: #1677ff;
+            color: #fff;
+            border-bottom-right-radius: 4px;
+        }
+        .msg.ai {
+            align-self: flex-start;
+            background: #fff;
+            color: #333;
+            border: 1px solid #e8e8e8;
+            border-bottom-left-radius: 4px;
+        }
+        .msg .label {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-bottom: 4px;
+        }
+        .input-bar {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
+        }
+        .input-bar input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid #d9d9d9;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+        }
+        .input-bar input:focus {
+            border-color: #1677ff;
+        }
+        .input-bar button {
+            padding: 10px 20px;
+            background: #1677ff;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .input-bar button:hover {
+            background: #4096ff;
+        }
+        .input-bar button:disabled {
+            background: #bfbfbf;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <header> AI 对话（流式 + 记忆）</header>
+    <div id="messages"></div>
+    <div class="input-bar">
+        <input id="msg" placeholder="输入消息..." />
+        <button id="sendBtn" onclick="send()">发送</button>
+    </div>
+
+    <script>
+        const sessionId = 'demo-' + Date.now();
+        let isStreaming = false;
+
+        async function send() {
+            if (isStreaming) return;
+            const input = document.getElementById('msg');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            isStreaming = true;
+            document.getElementById('sendBtn').disabled = true;
+
+            append(msg, 'user');
+            input.value = '';
+
+            const aiDiv = append('', 'ai', true);
+
+            try {
+                const res = await fetch('/api/chat/stream', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: msg, sessionId})
+                });
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, {stream: true});
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (trimmed.startsWith('data:')) {
+                            aiDiv.textContent += trimmed.slice(5).trimStart();
+                        } else if (trimmed && !trimmed.startsWith(':')) {
+                            aiDiv.textContent += trimmed;
+                        }
+                    }
+                    // 自动滚动到底部
+                    const container = document.getElementById('messages');
+                    container.scrollTop = container.scrollHeight;
+                }
+            } catch (e) {
+                aiDiv.textContent += '\n[连接中断]';
+            } finally {
+                isStreaming = false;
+                document.getElementById('sendBtn').disabled = false;
+                input.focus();
+            }
+        }
+
+        function append(text, role, returnDiv) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'msg ' + role;
+
+            const label = document.createElement('div');
+            label.className = 'label';
+            label.textContent = role === 'user' ? '你' : 'AI';
+            wrapper.appendChild(label);
+
+            const content = document.createElement('div');
+            content.textContent = text;
+            wrapper.appendChild(content);
+
+            document.getElementById('messages').appendChild(wrapper);
+
+            // 自动滚动
+            const container = document.getElementById('messages');
+            container.scrollTop = container.scrollHeight;
+
+            if (returnDiv) return content;
+        }
+
+        document.getElementById('msg').addEventListener('keydown', e => {
+            if (e.key === 'Enter') send();
+        });
+    </script>
+</body>
+</html>

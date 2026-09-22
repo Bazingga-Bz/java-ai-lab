@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: java-ai-lab
+  ai:
+    openai:
+      api-key: ${AI_API_KEY}
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      chat:
+        options:
+          model: qwen3.8-omni-flash
+          temperature: 0.7
+
+server:
+  port: 8080
